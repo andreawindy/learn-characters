@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>认字小能手</title>
+    
+    <!-- Error Handler for debugging blank screens -->
+    <script>
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        var container = document.getElementById('root');
+        if (!container) {
+           container = document.createElement('div');
+           document.body.appendChild(container);
+        }
+        container.innerHTML = '<div style="padding:20px; color:red; font-family:sans-serif;"><h3>启动错误 (App Startup Error)</h3><p>' + msg + '</p><p>Line: ' + lineNo + '</p></div>';
+        return false;
+      };
+    </script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM (UMD - More stable for standalone files) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&display=swap');
+      body {
+        font-family: 'Noto Sans SC', sans-serif;
+        background-color: #f0f9ff;
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .animate-bounce-short { animation: bounce 0.5s ease-in-out 1; }
+      @keyframes shake {
+        10%, 90% { transform: translate3d(-1px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+        40%, 60% { transform: translate3d(4px, 0, 0); }
+      }
+      @keyframes scoreBump {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.5); color: #16a34a; text-shadow: 0 0 10px rgba(22, 163, 74, 0.5); }
+        100% { transform: scale(1); }
+      }
+      .animate-score-bump { animation: scoreBump 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+      @keyframes popIn {
+        0% { transform: scale(0.5); opacity: 0; }
+        60% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .animate-pop-in { animation: popIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+      @keyframes slowSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      .animate-slow-spin { animation: slowSpin 10s linear infinite; }
+      
+      /* Custom scrollbar for textareas */
+      textarea::-webkit-scrollbar { width: 8px; }
+      textarea::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+      textarea::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 4px; }
+      textarea::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- INLINE ICONS (Replaces Lucide dependency for better offline/single-file stability) ---
+        const Icon = ({ path, className, size = 24, fill = "none" }) => (
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width={size} 
+                height={size} 
+                viewBox="0 0 24 24" 
+                fill={fill} 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className}
+            >
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            Settings: (props) => <Icon {...props} path={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>} />,
+            Play: (props) => <Icon {...props} path={<polygon points="5 3 19 12 5 21 5 3" />} />,
+            Volume2: (props) => <Icon {...props} path={<><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></>} />,
+            Trophy: (props) => <Icon {...props} path={<><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" /></>} />,
+            AlertCircle: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></>} />,
+            Flame: (props) => <Icon {...props} path={<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />} />,
+            Star: (props) => <Icon {...props} path={<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />} />,
+            X: (props) => <Icon {...props} path={<><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>} />,
+            GraduationCap: (props) => <Icon {...props} path={<><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" /></>} />,
+            CheckCircle: (props) => <Icon {...props} path={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>} />,
+            Download: (props) => <Icon {...props} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></>} />,
+            Upload: (props) => <Icon {...props} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></>} />,
+            Save: (props) => <Icon {...props} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></>} />,
+        };
+
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        // --- CONSTANTS ---
+        const DEFAULT_DATA = `天：天空
+地：土地
+人：人们
+你：你好
+我：我们
+他：他们
+一：一个
+二：二十
+三：三天
+四：四个
+五：五岁
+上：上面
+下：下面
+口：口水
+耳：耳朵
+目：目光
+手：手心
+足：足球
+站：站立
+坐：坐下
+日：日子
+月：月亮
+水：水果
+火：火苗
+山：山顶
+石：石头
+田：田地
+禾：禾苗
+对：对面
+云：白云
+雨：下雨
+风：大风
+花：花朵
+鸟：小鸟
+虫：虫子
+六：六岁
+七：七天
+八：八个
+九：九点
+十：十分
+爸：爸爸
+妈：妈妈
+马：马路
+土：土地
+不：不要
+画：画画
+打：打球
+棋：下棋
+鸡：小鸡
+字：汉字
+词：词语
+语：语言
+句：句子
+子：孩子
+桌：桌子
+纸：纸张
+文：语文
+数：数学
+学：学习
+音：音乐
+乐：快乐
+妹：妹妹
+奶：奶奶
+小：小学
+桥：小桥
+台：平台
+雪：下雪
+儿：儿童
+白：白色
+草：草地
+家：家庭
+是：是的
+车：汽车
+路：马路
+灯：路灯
+走：走路
+秋：秋天
+气：天气
+了：好了
+树：大树
+叶：树叶
+片：叶片
+大：大家
+飞：飞翔
+会：会说
+个：个子
+的：好的
+船：小船
+两：两个
+头：头发
+在：在家
+里：里面
+看：看见
+见：见面
+闪：闪光
+星：星星
+江：江水
+南：江南
+可：可以
+采：采花
+莲：莲花
+鱼：小鱼
+东：东方
+西：西边
+北：北方
+尖：尖角
+说：说话
+春：春天
+青：青草
+蛙：青蛙
+夏：夏天
+弯：弯腰
+皮：皮球
+地：地面
+冬：冬天
+男：男孩
+女：女孩
+开：开门
+关：关门
+正：正在
+反：反面
+远：远方
+有：有的
+色：颜色
+近：附近
+听：听见
+无：无声
+声：声音
+去：出去
+还：回来
+来：来到
+多：多少
+少：少量
+黄：黄色
+牛：黄牛
+只：一只
+猫：小猫
+边：旁边
+鸭：鸭子
+苹：苹果
+果：水果
+杏：杏子
+桃：桃子
+书：书本
+包：书包
+尺：尺子
+作：作业
+业：作业
+本：本子
+笔：铅笔
+刀：小刀
+课：上课
+早：早上
+校：学校
+明：明天
+力：力量
+尘：灰尘
+从：从前
+众：大众
+双：双手
+木：木头
+林：树林
+森：森林
+条：一条
+心：开心
+升：升起
+国：国家
+旗：国旗
+中：中国
+红：红色
+歌：歌曲
+起：起来
+么：什么
+美：美丽
+丽：美丽
+立：站立
+午：中午
+晚：晚上
+昨：昨天
+今：今天
+年：今年
+影：影子
+前：前面
+后：后面
+黑：黑色
+狗：小狗
+左：左边
+右：右边
+它：它们
+好：好看
+朋：朋友
+友：朋友
+比：比较
+尾：尾巴
+谁：谁的
+长：长短
+短：长短
+把：把手
+伞：雨伞
+兔：兔子
+最：最好
+公：公园
+写：写字
+诗：诗歌
+点：点头
+要：需要
+过：过去
+给：给你
+当：当时
+串：一串
+们：我们
+以：以后
+成：成功
+数：数字
+彩：彩色
+半：一半
+空：天空
+问：问题
+到：来到
+方：方向
+没：没有
+更：更加
+绿：绿色
+出：出去
+长：成长
+睡：睡觉
+那：那里
+海：大海
+真：真的
+老：老师
+师：老师
+吗：好吗
+同：同学
+什：什么
+才：才能
+亮：明亮
+时：时候
+候：时候
+觉：感觉
+得：觉得
+自：自己
+己：自己
+很：很好
+穿：穿衣
+衣：衣服
+服：衣服
+门：大门
+快：快乐
+蓝：蓝色
+又：又来
+笑：笑着
+着：笑着
+向：方向
+和：和平
+贝：宝贝
+娃：娃娃
+挂：挂起
+活：生活
+金：金色
+哥：哥哥
+姐：姐姐
+弟：弟弟
+叔：叔叔
+爷：爷爷
+群：一群
+竹：竹子
+牙：牙齿
+用：使用
+几：几步
+步：几步
+为：为了
+参：参加
+加：参加
+洞：山洞
+着：看着
+乌：乌鸦
+鸦：乌鸦
+处：到处
+找：寻找
+办：办法
+旁：旁边
+许：也许
+法：方法
+放：放进
+进：进去
+高：高兴
+住：住房
+孩：孩子
+玩：玩耍
+吧：走吧
+发：发芽
+芽：发芽
+爬：爬山
+呀：哎呀
+久：很久
+回：回来
+全：全部
+变：变化
+工：工厂
+厂：工厂
+医：医院
+院：医院
+生：学生
+霜：白霜
+吹：吹风
+落：落下
+降：降落
+飘：飘雪
+游：游泳
+池：池塘
+入：进入
+姓：姓氏
+李：李子
+张：张开
+古：古代
+吴：吴国
+赵：赵国
+钱：金钱
+孙：孙子
+周：周围
+王：国王
+官：官员
+清：清水
+晴：晴天
+眼：眼睛
+睛：眼睛
+保：保护
+护：保护
+害：害怕
+事：事情
+请：请让
+让：请让
+病：生病
+相：相遇
+遇：相遇
+喜：喜欢
+欢：喜欢
+怕：害怕
+言：语言
+互：互相
+令：命令
+动：动作
+万：万物
+纯：纯净
+净：纯净
+阴：阴天
+雷：雷声
+电：闪电
+阵：一阵
+冰：冰冻
+冻：冰冻
+夹：夹住
+吃：吃饭
+忘：忘记
+井：水井
+村：乡村
+叫：叫声
+毛：毛豆
+主：主席
+席：主席
+乡：乡亲
+亲：乡亲
+战：战士
+士：战士
+面：面前
+想：想念
+告：告诉
+诉：告诉
+就：就是
+京：北京
+安：安全
+广：广州
+非：非常
+常：非常
+壮：壮观
+观：壮观
+接：接着
+再：再做
+做：做事
+各：各种
+种：各种
+样：样子
+伙：伙伴
+伴：伙伴
+却：却也
+也：也是
+趣：有趣
+这：这里
+太：太阳
+阳：太阳
+道：道路
+送：送给
+忙：帮忙
+尝：尝试
+香：香甜
+甜：香甜
+温：温暖
+暖：温暖
+该：应该
+颜：颜色
+因：因为
+辆：车辆
+匹：马匹
+册：书册
+支：支笔
+铅：铅笔
+棵：一棵
+架：书架
+块：一块
+捉：捉虫
+急：着急
+直：一直
+河：河水
+行：行走
+信：书信
+跟：跟着
+忽：忽然
+喊：喊叫
+身：身体
+窝：猪窝
+孤：孤单
+单：孤单
+都：都是
+邻：邻居
+居：邻居
+招：招呼
+呼：招呼
+静：安静
+怎：怎么
+独：独自
+跳：跳绳
+绳：跳绳
+讲：讲故事
+羽：羽毛
+球：羽球
+戏：游戏
+排：排球
+篮：篮球
+连：连忙
+运：运动
+夜：夜晚
+思：思念
+床：床上
+光：月光
+疑：怀疑
+举：举手
+望：希望
+低：低头
+故：故乡
+胆：胆子
+敢：勇敢
+往：往外走
+外：外面
+勇：勇敢
+窗：窗户
+乱：乱跑
+偏：偏偏
+散：散步
+原：原来
+像：好像
+微：微笑
+端：端正
+粽：粽子
+节：节日
+总：总是
+米：大米
+间：中间
+分：分钟
+豆：豆子
+肉：肉类
+带：带来
+知：知道
+据：根据
+念：想念
+虹：彩虹
+座：一座
+浇：浇水
+提：提水
+洒：洒水
+挑：挑选
+兴：高兴
+镜：镜子
+拿：拿走
+照：照顾
+千：千万
+裙：裙子
+眉：眉毛
+鼻：鼻子
+嘴：嘴巴
+脖：脖子
+臂：手臂
+肚：肚子
+腿：腿脚
+脚：脚步
+蜻：蜻蜓
+蜓：蜻蜓
+迷：迷路
+藏：藏起来
+造：制造
+蚂：蚂蚁
+蚁：蚂蚁
+食：食粮
+粮：食粮
+蛛：蜘蛛
+网：蜘蛛网
+圆：圆形
+严：严寒
+寒：严寒
+酷：酷暑
+暑：酷暑
+凉：凉爽
+晨：早晨
+细：细雨
+朝：朝霞
+霞：朝霞
+夕：夕阳
+杨：杨树
+操：操场
+场：操场
+拔：拔河
+拍：拍球
+跑：跑步
+踢：踢球
+铃：铃声
+热：热闹
+闹：热闹
+锻：锻炼
+炼：锻炼
+体：身体
+之：之初
+初：之初
+性：性善
+善：性善
+习：学习
+教：教室
+迁：迁移
+贵：贵重
+专：专心
+幼：幼小
+玉：玉器
+器：玉器
+义：义气
+饭：吃饭
+能：能力
+饱：吃饱
+茶：泡茶
+泡：泡茶
+轻：轻声
+鞭：鞭炮
+炮：鞭炮
+首：首先
+踪：踪迹
+迹：踪迹
+浮：浮萍
+萍：浮萍
+泉：泉水
+流：流水
+爱：爱心
+柔：柔软
+荷：荷花
+露：露珠
+珠：露珠
+摇：摇动
+躺：躺下
+晶：晶亮
+停：停机
+机：停机
+展：展开
+透：透明
+翅：翅膀
+膀：翅膀
+唱：唱歌
+朵：花朵
+腰：弯腰
+坡：山坡
+沉：沉重
+伸：伸手
+潮：潮湿
+湿：潮湿
+呢：在呢
+空：空气
+闷：闷热
+消：消息
+息：消息
+搬：搬家
+响：响声
+棍：木棍
+汤：热汤
+扇：扇子
+椅：椅子
+萤：萤火
+牵：牵牛
+织：织布
+斗：斗篷
+具：工具
+次：一次
+丢：丢失
+哪：哪里
+新：新的
+每：每天
+平：平安
+她：她们
+些：一些
+仔：仔细
+检：检查
+查：检查
+所：所以
+钟：时钟
+丁：丁点
+元：元旦
+迟：迟到
+洗：洗手
+背：背包
+刚：刚刚
+共：共同
+汽：汽车
+决：决定
+定：决定
+已：已经
+经：已经
+物：动物
+虎：老虎
+熊：黑熊
+通：通过
+注：注意
+意：注意
+遍：一遍
+百：一百块
+舌：舌头
+鬼：妖魔鬼怪
+脸：洗脸
+准：准备
+第：第一
+猴：猴子
+结：结果
+掰：掰开
+扛：扛着
+满：满地
+扔：扔掉
+摘：摘梨子
+捧：捧着
+瓜：西瓜
+抱：抱着
+蹦：蹦跳
+追：追赶
+吵：吵闹
+胖：胖子
+岁：岁月
+现：现在
+票：车票
+交：交给
+弓：弓箭
+甘：甘甜
+棉：棉花
+娘：姑娘
+治：治疗
+燕：燕子
+别：告别
+干：干净
+然：然后
+奇：奇怪
+颗：一颗
+瓢：水瓢
+碧：碧绿
+吐：吐气
+啦：好啦
+熟：成熟
+掉：掉落
+吓：吓人
+羊：山羊
+鹿：梅花鹿
+逃：逃跑
+象：大象
+野：野外
+拦：拦住
+领：领口
+壁：墙壁
+墙：墙壁
+蚊：蚊子
+咬：咬一口
+断：断开
+您：您好
+甩：甩开
+赶：赶走
+房：房子
+傻：傻笑
+转：转身
+卫：卫生
+刷：刷牙
+梳：梳头
+巾：毛巾
+擦：擦手
+皂：肥皂
+澡：洗澡
+盆：澡盆
+塘：池塘
+脑：脑袋
+袋：脑袋
+灰：灰尘
+哇：哇哦
+捕：捕捉
+迎：欢迎
+阿：阿姨
+姨：阿姨
+酒：黄酒
+糖：糖果
+盐：食盐
+醋：食醋
+油：食油
+香：香味
+腐：豆腐
+蚝：蚝油
+酱：酱油
+胡：胡椒
+椒：胡椒
+粉：粉末
+角：八角
+烧：烧烤
+烤：烧烤
+淀：淀粉`;
+
+        const PRAISE_PHRASES = [
+            "你真棒！",
+            "太厉害了！",
+            "好聪明！",
+            "完全正确！"
+        ];
+
+        // --- SERVICES ---
+        let audioCtx = null;
+        const getContext = () => {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioCtx;
+        };
+
+        const playCorrectSound = () => {
+            try {
+                const ctx = getContext();
+                if (ctx.state === 'suspended') ctx.resume();
+                const now = ctx.currentTime;
+                [1046.50, 1318.51, 1568.00].forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    const startTime = now + (i * 0.05);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0, startTime);
+                    gain.gain.linearRampToValueAtTime(0.15, startTime + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+                    osc.start(startTime);
+                    osc.stop(startTime + 0.4);
+                });
+            } catch (e) { console.error("Audio error", e); }
+        };
+
+        const playCelebrationSound = () => {
+            try {
+                const ctx = getContext();
+                if (ctx.state === 'suspended') ctx.resume();
+                const notes = [{f:523.25,d:0.15},{f:659.25,d:0.15},{f:783.99,d:0.15},{f:1046.50,d:0.8}];
+                let st = ctx.currentTime;
+                notes.forEach((n, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = i === notes.length-1 ? 'sine':'triangle';
+                    osc.frequency.value = n.f;
+                    gain.gain.setValueAtTime(0, st);
+                    gain.gain.linearRampToValueAtTime(0.2, st + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.01, st + n.d);
+                    osc.start(st);
+                    osc.stop(st + n.d);
+                    st += 0.12;
+                });
+            } catch (e) { console.error("Celeb error", e); }
+        };
+
+        const initializeAudio = async () => {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.getVoices();
+            }
+            return Promise.resolve();
+        };
+
+        const playText = (text) => {
+            return new Promise((resolve) => {
+                if (!('speechSynthesis' in window)) { resolve(); return; }
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(text);
+                u.lang = 'zh-CN'; u.rate = 0.8; u.pitch = 1.0;
+                const v = window.speechSynthesis.getVoices().find(v => v.lang.includes('zh'));
+                if (v) u.voice = v;
+                u.onend = () => resolve();
+                u.onerror = () => resolve();
+                window.speechSynthesis.speak(u);
+            });
+        };
+
+        // --- APP LOGIC ---
+        const App = () => {
+            const [gameState, setGameState] = useState('PLAYING');
+            const [inputText, setInputText] = useState(DEFAULT_DATA);
+            const [learnedText, setLearnedText] = useState("");
+            const [wordList, setWordList] = useState([]);
+            const [wordStats, setWordStats] = useState({});
+            const [score, setScore] = useState(0);
+            const [currentOptions, setCurrentOptions] = useState([]);
+            const [targetWord, setTargetWord] = useState(null);
+            const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+            const [feedback, setFeedback] = useState('none');
+            const [errorMessage, setErrorMessage] = useState(null);
+            const [masteryNotification, setMasteryNotification] = useState(null);
+            const [scoreBump, setScoreBump] = useState(false);
+            const [showCelebration, setShowCelebration] = useState(false);
+            const [dailyGoal, setDailyGoal] = useState(10);
+            const [dailyProgress, setDailyProgress] = useState(0);
+            const [streak, setStreak] = useState(0);
+            const [goalMetToday, setGoalMetToday] = useState(false);
+            
+            const isMounted = useRef(true);
+            const wordListRef = useRef([]);
+            const fileInputRef = useRef(null);
+
+            const parseInputData = (text) => {
+                if (!text) return [];
+                return text.split('\n').map((line, index) => {
+                    const parts = line.split(/[:：]/);
+                    if (parts.length >= 2) return { id: `w-${index}`, char: parts[0].trim(), word: parts[1].trim() };
+                    return null;
+                }).filter(x => x && x.char.length > 0);
+            };
+
+            useEffect(() => { wordListRef.current = wordList; }, [wordList]);
+            useEffect(() => { return () => { isMounted.current = false; }; }, []);
+
+            useEffect(() => {
+                initializeAudio();
+                const savedGoal = localStorage.getItem('ww_goal');
+                if (savedGoal) setDailyGoal(parseInt(savedGoal));
+                
+                const savedScore = parseInt(localStorage.getItem('ww_score') || '0');
+                setScore(savedScore);
+
+                const lastDate = localStorage.getItem('ww_date');
+                const today = new Date().toDateString();
+                const savedStreak = parseInt(localStorage.getItem('ww_streak') || '0');
+                const savedProg = parseInt(localStorage.getItem('ww_prog') || '0');
+                const savedMet = localStorage.getItem('ww_met') === 'true';
+
+                if (lastDate === today) {
+                    setDailyProgress(savedProg);
+                    setStreak(savedStreak);
+                    setGoalMetToday(savedMet);
+                } else {
+                    setDailyProgress(0);
+                    setGoalMetToday(false);
+                    localStorage.setItem('ww_prog', '0');
+                    localStorage.setItem('ww_met', 'false');
+                    localStorage.setItem('ww_date', today);
+                    if (lastDate) {
+                        const d1 = new Date(lastDate);
+                        const diff = Math.ceil(Math.abs(new Date().getTime() - d1.getTime()) / (86400000));
+                        if (diff > 1 && !savedMet) {
+                            setStreak(0); localStorage.setItem('ww_streak', '0');
+                        } else {
+                            setStreak(savedStreak);
+                        }
+                    } else setStreak(0);
+                }
+
+                try {
+                    const s = localStorage.getItem('ww_stats');
+                    if (s) setWordStats(JSON.parse(s));
+                } catch(e){}
+
+                const si = localStorage.getItem('ww_input');
+                const sl = localStorage.getItem('ww_learned');
+                const curIn = si !== null ? si : DEFAULT_DATA;
+                setInputText(curIn);
+                setWordList(parseInputData(curIn));
+                if (sl) setLearnedText(sl);
+            }, []);
+
+            const updateProgress = () => {
+                const np = dailyProgress + 1;
+                setDailyProgress(np);
+                localStorage.setItem('ww_prog', np);
+                localStorage.setItem('ww_date', new Date().toDateString());
+                if (np >= dailyGoal && !goalMetToday) {
+                    const ns = streak + 1;
+                    setStreak(ns);
+                    setGoalMetToday(true);
+                    localStorage.setItem('ww_streak', ns);
+                    localStorage.setItem('ww_met', 'true');
+                    setShowCelebration(true);
+                    playCelebrationSound();
+                    setTimeout(() => isMounted.current && setShowCelebration(false), 5000);
+                }
+            };
+
+            const setupRound = useCallback(() => {
+                const list = wordListRef.current;
+                if (list.length === 0) { setTargetWord(null); return; }
+
+                const items = list.map(item => {
+                    const s = wordStats[item.char] || { correct: 0, incorrect: 0 };
+                    const w = 10 * (1 + s.incorrect * 3) / (1 + s.correct * 0.5);
+                    return { item, w };
+                });
+
+                let tw = items.reduce((sum, x) => sum + x.w, 0);
+                let rnd = Math.random() * tw;
+                let target = list[0];
+                for (const en of items) {
+                    rnd -= en.w;
+                    if (rnd <= 0) { target = en.item; break; }
+                }
+
+                setTargetWord(target);
+                
+                const others = list.filter(w => w.char !== target.char).sort(() => 0.5 - Math.random());
+                const distractors = [];
+                const used = new Set();
+                for (const d of others) {
+                    if (!used.has(d.char)) { distractors.push(d); used.add(d.char); }
+                    if (distractors.length >= 2) break;
+                }
+                while(distractors.length < 2 && list.length >= 3) {
+                     const r = list[Math.floor(Math.random()*list.length)];
+                     if(r.char!==target.char && !used.has(r.char)) { distractors.push(r); used.add(r.char); }
+                     if(distractors.length>=2) break;
+                }
+                setCurrentOptions([target, ...distractors].sort(() => 0.5 - Math.random()));
+                setFeedback('none');
+                setTimeout(() => playTargetAudio(target), 500);
+            }, [wordStats]);
+
+            useEffect(() => {
+                if (gameState === 'PLAYING' && wordList.length > 0 && !targetWord) setupRound();
+            }, [gameState, wordList, setupRound, targetWord]);
+
+            const playTargetAudio = async (w) => {
+                if (!w || isPlayingAudio) return;
+                setErrorMessage(null);
+                setIsPlayingAudio(true);
+                await playText(`${w.char}，${w.word}`);
+                if (isMounted.current) setIsPlayingAudio(false);
+            };
+
+            const handleOptionClick = async (sel) => {
+                if (!targetWord || isPlayingAudio || feedback === 'correct') return;
+                if (sel.id === targetWord.id) {
+                    setFeedback('correct');
+                    playCorrectSound();
+                    setScoreBump(true);
+                    setTimeout(() => setScoreBump(false), 400);
+                    setScore(s => { localStorage.setItem('ww_score', s+1); return s+1; });
+                    updateProgress();
+
+                    let mastered = false;
+                    setWordStats(prev => {
+                        const s = prev[targetWord.char] || {correct:0,incorrect:0,consecutiveCorrect:0};
+                        const nc = (s.consecutiveCorrect||0) + 1;
+                        if (nc >= 20) mastered = true;
+                        const ns = {...prev, [targetWord.char]: {...s, correct: s.correct+1, consecutiveCorrect: nc}};
+                        localStorage.setItem('ww_stats', JSON.stringify(ns));
+                        return ns;
+                    });
+
+                    if (mastered) {
+                        setTimeout(() => {
+                            setMasteryNotification(`太棒了！"${targetWord.char}" 已经学会！`);
+                            setTimeout(() => setMasteryNotification(null), 4000);
+                            const lines = inputText.split('\n');
+                            const idx = lines.findIndex(l => l.split(/[:：]/)[0]?.trim() === targetWord.char);
+                            if (idx !== -1) {
+                                const line = lines[idx];
+                                lines.splice(idx, 1);
+                                const nIn = lines.join('\n');
+                                const nLe = (learnedText ? learnedText+'\n':'') + line;
+                                setInputText(nIn); setLearnedText(nLe);
+                                localStorage.setItem('ww_input', nIn); localStorage.setItem('ww_learned', nLe);
+                                setWordList(parseInputData(nIn));
+                            }
+                        }, 1000);
+                    }
+
+                    setTimeout(async () => {
+                        await playText(PRAISE_PHRASES[Math.floor(Math.random()*PRAISE_PHRASES.length)]);
+                        setTimeout(() => isMounted.current && setupRound(), 500);
+                    }, 300);
+                } else {
+                    setFeedback('incorrect');
+                    setWordStats(prev => {
+                        const s = prev[targetWord.char] || {correct:0,incorrect:0,consecutiveCorrect:0};
+                        const ns = {...prev, [targetWord.char]: {...s, incorrect: s.incorrect+1, consecutiveCorrect: 0}};
+                        localStorage.setItem('ww_stats', JSON.stringify(ns));
+                        return ns;
+                    });
+                    setTimeout(() => {
+                        if (isMounted.current) { setFeedback('none'); playTargetAudio(targetWord); }
+                    }, 800);
+                }
+            };
+
+            const handleExport = () => {
+                const d = { input: inputText, learned: learnedText, stats: wordStats, score, streak, goal: dailyGoal, prog: dailyProgress, date: localStorage.getItem('ww_date'), met: localStorage.getItem('ww_met') };
+                const b = new Blob([JSON.stringify({version:1, data:d})], {type:'application/json'});
+                const u = URL.createObjectURL(b);
+                const a = document.createElement('a'); a.href=u; a.download='renzi-backup.json';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            };
+
+            const handleImport = (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = (ev) => {
+                    try {
+                        const d = JSON.parse(ev.target.result).data;
+                        if(d.input) localStorage.setItem('ww_input', d.input);
+                        if(d.learned) localStorage.setItem('ww_learned', d.learned);
+                        if(d.stats) localStorage.setItem('ww_stats', JSON.stringify(d.stats));
+                        localStorage.setItem('ww_score', d.score||0);
+                        localStorage.setItem('ww_streak', d.streak||0);
+                        localStorage.setItem('ww_goal', d.goal||10);
+                        localStorage.setItem('ww_prog', d.prog||0);
+                        window.location.reload(); 
+                    } catch(err){ alert("导入失败"); }
+                };
+                r.readAsText(f);
+            };
+
+            const renderContent = () => {
+                if (gameState === 'SETUP') {
+                    return (
+                        <div className="max-w-4xl w-full bg-white rounded-3xl shadow-xl p-8 animate-fade-in">
+                            <div className="flex justify-center mb-6 text-indigo-600"><Icons.Settings size={48}/></div>
+                            <h1 className="text-3xl font-bold text-center mb-6">设置内容</h1>
+                            <div className="grid md:grid-cols-2 gap-8 mb-8">
+                                <div className="flex flex-col gap-6">
+                                    <div>
+                                        <label className="flex items-center gap-2 font-bold mb-2 text-gray-700"><Icons.Flame className="text-orange-500" size={18}/> 每日目标</label>
+                                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center gap-4">
+                                            <input type="number" min="1" value={dailyGoal} onChange={e=>setDailyGoal(parseInt(e.target.value)||1)} className="w-20 p-2 text-center text-xl font-bold rounded-lg"/>
+                                            <span className="text-gray-600">字 / 天</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 font-bold mb-2 text-gray-700"><Icons.Save className="text-blue-500" size={18}/> 数据管理</label>
+                                        <div className="bg-blue-50 p-4 rounded-xl flex gap-4">
+                                            <button onClick={handleExport} className="flex-1 bg-white text-blue-600 py-3 rounded-lg font-bold flex justify-center gap-2 shadow-sm"><Icons.Download size={18}/>备份</button>
+                                            <button onClick={()=>fileInputRef.current.click()} className="flex-1 bg-blue-500 text-white py-3 rounded-lg font-bold flex justify-center gap-2 shadow-md"><Icons.Upload size={18}/>恢复</button>
+                                            <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json"/>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-6">
+                                    <div><label className="flex gap-2 font-bold mb-2 text-gray-700"><Icons.Play size={16}/> 学习素材</label><textarea className="w-full h-32 p-4 bg-indigo-50 border-2 border-indigo-100 rounded-xl" value={inputText} onChange={e=>setInputText(e.target.value)}/></div>
+                                    <div><label className="flex gap-2 font-bold mb-2 text-gray-700"><Icons.GraduationCap size={16}/> 已学会</label><textarea className="w-full h-32 p-4 bg-green-50 border-2 border-green-100 rounded-xl" value={learnedText} onChange={e=>setLearnedText(e.target.value)}/></div>
+                                </div>
+                            </div>
+                            <button onClick={async ()=>{ 
+                                await initializeAudio(); 
+                                if(parseInputData(inputText).length<3) { alert("请至少输入3行素材"); return; }
+                                localStorage.setItem('ww_input', inputText);
+                                localStorage.setItem('ww_learned', learnedText);
+                                localStorage.setItem('ww_goal', dailyGoal);
+                                setWordList(parseInputData(inputText));
+                                setGameState('PLAYING');
+                            }} className="w-full bg-indigo-500 text-white font-bold py-4 rounded-xl text-xl shadow-lg flex justify-center gap-2"><Icons.Play size={24}/> 开始学习</button>
+                        </div>
+                    );
+                }
+
+                if (wordList.length === 0) {
+                     return <div className="max-w-lg w-full bg-white rounded-3xl p-8 text-center shadow-xl"><Icons.Trophy size={80} className="text-yellow-500 mx-auto mb-6"/><h2 className="text-2xl font-bold mb-4">恭喜你！</h2><p className="mb-8">学会了所有字！</p><button onClick={()=>setGameState('SETUP')} className="bg-indigo-500 text-white font-bold py-3 px-8 rounded-xl">添加素材</button></div>;
+                }
+
+                return (
+                    <div className="max-w-lg w-full flex flex-col items-center">
+                        <div className="w-full flex flex-col gap-4 mb-6 px-4">
+                            <div className="flex justify-between items-center">
+                                <button onClick={()=>setGameState('SETUP')} className="p-2 bg-white rounded-full shadow-sm text-gray-400"><Icons.Settings size={20}/></button>
+                                <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${goalMetToday?'bg-orange-50 border-orange-200 text-orange-600':'bg-gray-50 border-gray-100 text-gray-400'}`}><Icons.Flame size={24} fill={goalMetToday?"currentColor":"none"}/><div className="flex flex-col leading-none"><span className="text-lg font-black">{streak}</span><span className="text-[10px]">天连击</span></div></div>
+                                <div className={`flex items-center gap-2 bg-yellow-100 px-4 py-2 rounded-full border-2 border-yellow-200 ${scoreBump?'animate-score-bump':''}`}><Icons.Trophy size={20} className="text-yellow-500" fill="currentColor"/><span className="text-xl font-bold text-yellow-700">{score}</span></div>
+                            </div>
+                            <div className="w-full bg-white p-3 rounded-2xl shadow-sm border border-gray-100"><div className="flex justify-between text-xs font-bold mb-1 px-1"><span>今日挑战</span><span>{dailyProgress} / {dailyGoal}</span></div><div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 rounded-full ${goalMetToday?'bg-gradient-to-r from-orange-400 to-red-500':'bg-indigo-400'}`} style={{width:`${Math.min(100,(dailyProgress/dailyGoal)*100)}%`}}></div></div></div>
+                        </div>
+                        <div className="w-full bg-white rounded-3xl shadow-2xl p-6 mb-8 relative overflow-hidden min-h-[500px] flex flex-col justify-start border-b-8 border-indigo-100">
+                            {masteryNotification && <div className="absolute inset-x-0 top-0 bg-green-100 p-3 text-green-700 text-sm font-bold text-center flex justify-center gap-2 z-20 animate-pop-in"><Icons.CheckCircle size={18}/>{masteryNotification}</div>}
+                            <div className="text-center mb-6 mt-2 shrink-0">
+                                <button onClick={()=>targetWord&&playTargetAudio(targetWord)} disabled={isPlayingAudio} className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto transition-transform active:scale-95 ${isPlayingAudio?'bg-indigo-100 text-indigo-500 ring-4 ring-indigo-200':'bg-indigo-500 text-white shadow-lg'}`}>{isPlayingAudio?<div className="flex gap-1 items-end h-8 pb-2"><span className="w-1.5 h-3 bg-current rounded-full animate-bounce"></span><span className="w-1.5 h-5 bg-current rounded-full animate-bounce"></span><span className="w-1.5 h-3 bg-current rounded-full animate-bounce"></span></div>:<Icons.Volume2 size={36}/>}</button>
+                            </div>
+                            <div className="h-8 text-center mb-4 shrink-0">{feedback==='correct'&&<span className="text-green-500 font-bold text-2xl animate-bounce block">你真棒！🎉</span>}</div>
+                            <div className="grid grid-cols-3 gap-3 md:gap-4 flex-grow content-center">
+                                {currentOptions.map(opt => {
+                                    const isTarget = targetWord?.id===opt.id;
+                                    return (
+                                        <button key={opt.id} onClick={()=>handleOptionClick(opt)} disabled={isPlayingAudio||feedback==='correct'} className={`w-full aspect-[4/5] md:aspect-square rounded-2xl text-7xl md:text-8xl font-bold transition-all shadow-md flex items-center justify-center relative ${feedback==='correct'&&isTarget?'bg-green-500 text-white ring-4 ring-green-200 z-10 scale-105':'bg-white hover:bg-indigo-50 border-2 border-gray-100 text-gray-800'}`}>{opt.char}</button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 font-sans relative">
+                    {renderContent()}
+                    {showCelebration && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={()=>setShowCelebration(false)}>
+                            <div className="relative w-full max-w-sm mx-4 bg-white rounded-3xl p-8 text-center shadow-2xl animate-pop-in border-4 border-yellow-300" onClick={e=>e.stopPropagation()}>
+                                <button onClick={()=>setShowCelebration(false)} className="absolute top-4 right-4 text-gray-400"><Icons.X/></button>
+                                <div className="flex justify-center mb-6"><div className="relative"><Icons.Flame size={80} className="text-orange-500 animate-bounce" fill="currentColor"/><Icons.Star size={30} className="text-yellow-400 absolute -top-2 -right-4 animate-spin" fill="currentColor"/></div></div>
+                                <h2 className="text-3xl font-black text-orange-600 mb-2">挑战成功！</h2>
+                                <p className="text-gray-600 text-lg mb-6">今日目标已达成</p>
+                                <button onClick={()=>setShowCelebration(false)} className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold py-3 rounded-xl shadow-lg">继续加油</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
