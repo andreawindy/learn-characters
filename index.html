@@ -20,6 +20,22 @@
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for Dark Mode -->
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                750: '#2d3748', // Custom shade for cards
+                850: '#1a202c', // Custom shade for background
+              }
+            }
+          }
+        }
+      }
+    </script>
     
     <!-- React & ReactDOM (UMD - More stable for standalone files) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -32,10 +48,15 @@
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&display=swap');
       body {
         font-family: 'Noto Sans SC', sans-serif;
-        background-color: #f0f9ff;
+        background-color: #f0f9ff; /* Fallback */
         overscroll-behavior-y: none;
         -webkit-tap-highlight-color: transparent;
       }
+      /* Dark mode body fallback */
+      .dark body {
+        background-color: #0f172a;
+      }
+      
       .animate-bounce-short { animation: bounce 0.5s ease-in-out 1; }
       @keyframes shake {
         10%, 90% { transform: translate3d(-1px, 0, 0); }
@@ -60,16 +81,18 @@
       
       /* Custom scrollbar for textareas */
       textarea::-webkit-scrollbar { width: 8px; }
-      textarea::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
-      textarea::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 4px; }
-      textarea::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+      textarea::-webkit-scrollbar-track { background: transparent; border-radius: 4px; }
+      textarea::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      textarea::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      .dark textarea::-webkit-scrollbar-thumb { background: #475569; }
+      .dark textarea::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- INLINE ICONS (Replaces Lucide dependency for better offline/single-file stability) ---
+        // --- INLINE ICONS ---
         const Icon = ({ path, className, size = 24, fill = "none" }) => (
             <svg 
                 xmlns="http://www.w3.org/2000/svg" 
@@ -101,6 +124,9 @@
             Download: (props) => <Icon {...props} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></>} />,
             Upload: (props) => <Icon {...props} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></>} />,
             Save: (props) => <Icon {...props} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></>} />,
+            Mic: (props) => <Icon {...props} path={<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />} />,
+            Moon: (props) => <Icon {...props} path={<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />} />,
+            Sun: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></>} />,
         };
 
         const { useState, useEffect, useCallback, useRef } = React;
@@ -896,18 +922,100 @@
             return Promise.resolve();
         };
 
-        const playText = (text) => {
+        // Important: Attach utterance to window to prevent iOS Safari garbage collection
+        window.speechUtteranceChunk = null;
+
+        const playText = (text, voiceURI) => {
             return new Promise((resolve) => {
                 if (!('speechSynthesis' in window)) { resolve(); return; }
-                window.speechSynthesis.cancel();
+                
+                const synth = window.speechSynthesis;
+                
+                // iOS Fix: Resume if paused (common state in Safari)
+                if (synth.paused) { synth.resume(); }
+
+                synth.cancel(); // Clear queue immediately
+
                 const u = new SpeechSynthesisUtterance(text);
-                u.lang = 'zh-CN'; u.rate = 0.8; u.pitch = 1.0;
-                const v = window.speechSynthesis.getVoices().find(v => v.lang.includes('zh'));
+                u.lang = 'zh-CN'; 
+                u.rate = 0.8; 
+                u.pitch = 1.0;
+                
+                // Keep reference globally for iOS GC bug
+                window.speechUtteranceChunk = u;
+
+                const voices = synth.getVoices();
+                let v = null;
+                
+                // 1. Try to use specific user-selected voice
+                if (voiceURI) {
+                    v = voices.find(voice => voice.voiceURI === voiceURI);
+                }
+                
+                // 2. Fallback: Intelligent Auto-Selection for High Quality
+                if (!v) {
+                    // Filter for Chinese voices
+                    const cnVoices = voices.filter(v => v.lang.includes('zh'));
+                    
+                    // Priority 1: Known iOS High-Quality Voice Names
+                    v = cnVoices.find(v => v.name.includes('Tian') || v.name.includes('Lili') || v.name.includes('Yu-shu'));
+                    
+                    // Priority 2: Known Android High-Quality Voice Names
+                    if (!v) v = cnVoices.find(v => v.name.includes('Google') && v.name.includes('China'));
+                    
+                    // Priority 3: Non-local voices (often network/enhanced on desktop)
+                    if (!v) v = cnVoices.find(v => !v.localService && v.lang === 'zh-CN');
+                    
+                    // Priority 4: Exact region match
+                    if (!v) v = cnVoices.find(v => v.lang === 'zh-CN');
+                    
+                    // Priority 5: Any Chinese
+                    if (!v) v = cnVoices.find(v => v.lang.includes('zh'));
+                }
+
                 if (v) u.voice = v;
-                u.onend = () => resolve();
-                u.onerror = () => resolve();
-                window.speechSynthesis.speak(u);
+
+                // CRITICAL FIX: Safety Timeout
+                const safetyTimer = setTimeout(() => {
+                    window.speechUtteranceChunk = null;
+                    resolve();
+                }, 2500);
+
+                u.onend = () => {
+                    clearTimeout(safetyTimer);
+                    window.speechUtteranceChunk = null;
+                    resolve();
+                };
+                
+                u.onerror = (e) => {
+                    clearTimeout(safetyTimer);
+                    window.speechUtteranceChunk = null;
+                    resolve();
+                };
+                
+                synth.speak(u);
             });
+        };
+
+        // Unlock audio context and TTS engine on first user interaction
+        const unlockAudio = () => {
+            const ctx = getContext();
+            if (ctx.state === 'suspended') ctx.resume();
+            
+            // Just play a quick silent buffer to unlock AudioContext
+            const buffer = ctx.createBuffer(1, 1, 22050);
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            source.start(0);
+
+            // Also warm up TTS with an empty string
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(""); 
+                window.speechUtteranceChunk = u;
+                window.speechSynthesis.speak(u);
+            }
         };
 
         // --- APP LOGIC ---
@@ -931,6 +1039,13 @@
             const [streak, setStreak] = useState(0);
             const [goalMetToday, setGoalMetToday] = useState(false);
             
+            // Voice Settings State
+            const [availableVoices, setAvailableVoices] = useState([]);
+            const [selectedVoiceURI, setSelectedVoiceURI] = useState(localStorage.getItem('ww_voice') || '');
+            
+            // Dark Mode State
+            const [darkMode, setDarkMode] = useState(localStorage.getItem('ww_dark') === 'true');
+
             const isMounted = useRef(true);
             const wordListRef = useRef([]);
             const fileInputRef = useRef(null);
@@ -946,6 +1061,33 @@
 
             useEffect(() => { wordListRef.current = wordList; }, [wordList]);
             useEffect(() => { return () => { isMounted.current = false; }; }, []);
+
+            // Dark Mode Effect
+            useEffect(() => {
+                if (darkMode) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+                localStorage.setItem('ww_dark', darkMode);
+            }, [darkMode]);
+
+            // Voice Loading Logic
+            useEffect(() => {
+                const updateVoices = () => {
+                    if ('speechSynthesis' in window) {
+                        const allVoices = window.speechSynthesis.getVoices();
+                        // Filter for Chinese voices
+                        const cn = allVoices.filter(v => v.lang.includes('zh'));
+                        setAvailableVoices(cn);
+                    }
+                };
+
+                updateVoices();
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.onvoiceschanged = updateVoices;
+                }
+            }, []);
 
             useEffect(() => {
                 initializeAudio();
@@ -1046,6 +1188,9 @@
                 }
                 setCurrentOptions([target, ...distractors].sort(() => 0.5 - Math.random()));
                 setFeedback('none');
+                
+                // IMPORTANT: On iOS, this async call might be blocked if not warmed up.
+                // The 'unlockAudio' call in startGame helps allow this.
                 setTimeout(() => playTargetAudio(target), 500);
             }, [wordStats]);
 
@@ -1056,13 +1201,19 @@
             const playTargetAudio = async (w) => {
                 if (!w || isPlayingAudio) return;
                 setErrorMessage(null);
-                setIsPlayingAudio(true);
-                await playText(`${w.char}，${w.word}`);
-                if (isMounted.current) setIsPlayingAudio(false);
+                setIsPlayingAudio(true); // SPINNER ON
+                // Pass the selected voice URI to playText
+                await playText(`${w.char}，${w.word}`, selectedVoiceURI); 
+                if (isMounted.current) setIsPlayingAudio(false); // SPINNER OFF
             };
 
             const handleOptionClick = async (sel) => {
+                // Ensure audio context is active on every interaction
+                const ctx = getContext();
+                if(ctx && ctx.state === 'suspended') ctx.resume();
+                
                 if (!targetWord || isPlayingAudio || feedback === 'correct') return;
+                
                 if (sel.id === targetWord.id) {
                     setFeedback('correct');
                     playCorrectSound();
@@ -1100,7 +1251,7 @@
                     }
 
                     setTimeout(async () => {
-                        await playText(PRAISE_PHRASES[Math.floor(Math.random()*PRAISE_PHRASES.length)]);
+                        await playText(PRAISE_PHRASES[Math.floor(Math.random()*PRAISE_PHRASES.length)], selectedVoiceURI);
                         setTimeout(() => isMounted.current && setupRound(), 500);
                     }, 300);
                 } else {
@@ -1148,70 +1299,128 @@
             const renderContent = () => {
                 if (gameState === 'SETUP') {
                     return (
-                        <div className="max-w-4xl w-full bg-white rounded-3xl shadow-xl p-8 animate-fade-in">
-                            <div className="flex justify-center mb-6 text-indigo-600"><Icons.Settings size={48}/></div>
-                            <h1 className="text-3xl font-bold text-center mb-6">设置内容</h1>
+                        <div className="max-w-4xl w-full bg-white dark:bg-slate-750 rounded-3xl shadow-xl p-8 animate-fade-in transition-colors duration-300">
+                            <div className="flex justify-between items-center mb-6">
+                                <div className="w-10"></div>
+                                <div className="flex flex-col items-center">
+                                    <div className="text-indigo-600 dark:text-indigo-400 mb-2"><Icons.Settings size={48}/></div>
+                                    <h1 className="text-3xl font-bold text-center text-gray-900 dark:text-white">设置内容</h1>
+                                </div>
+                                <button 
+                                    onClick={() => setDarkMode(!darkMode)} 
+                                    className="p-2 rounded-full bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-yellow-300 hover:bg-gray-200 dark:hover:bg-slate-500 transition-colors"
+                                >
+                                    {darkMode ? <Icons.Sun size={24}/> : <Icons.Moon size={24}/>}
+                                </button>
+                            </div>
+
                             <div className="grid md:grid-cols-2 gap-8 mb-8">
                                 <div className="flex flex-col gap-6">
                                     <div>
-                                        <label className="flex items-center gap-2 font-bold mb-2 text-gray-700"><Icons.Flame className="text-orange-500" size={18}/> 每日目标</label>
-                                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center gap-4">
-                                            <input type="number" min="1" value={dailyGoal} onChange={e=>setDailyGoal(parseInt(e.target.value)||1)} className="w-20 p-2 text-center text-xl font-bold rounded-lg"/>
-                                            <span className="text-gray-600">字 / 天</span>
+                                        <label className="flex items-center gap-2 font-bold mb-2 text-gray-700 dark:text-gray-200"><Icons.Flame className="text-orange-500" size={18}/> 每日目标</label>
+                                        <div className="bg-indigo-50 dark:bg-slate-800 p-4 rounded-xl border border-indigo-100 dark:border-slate-700 flex items-center gap-4">
+                                            <input type="number" min="1" value={dailyGoal} onChange={e=>setDailyGoal(parseInt(e.target.value)||1)} className="w-20 p-2 text-center text-xl font-bold rounded-lg bg-white dark:bg-slate-600 text-gray-900 dark:text-white"/>
+                                            <span className="text-gray-600 dark:text-gray-400">字 / 天</span>
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-2 font-bold mb-2 text-gray-700"><Icons.Save className="text-blue-500" size={18}/> 数据管理</label>
-                                        <div className="bg-blue-50 p-4 rounded-xl flex gap-4">
-                                            <button onClick={handleExport} className="flex-1 bg-white text-blue-600 py-3 rounded-lg font-bold flex justify-center gap-2 shadow-sm"><Icons.Download size={18}/>备份</button>
-                                            <button onClick={()=>fileInputRef.current.click()} className="flex-1 bg-blue-500 text-white py-3 rounded-lg font-bold flex justify-center gap-2 shadow-md"><Icons.Upload size={18}/>恢复</button>
+                                        <label className="flex items-center gap-2 font-bold mb-2 text-gray-700 dark:text-gray-200"><Icons.Mic className="text-purple-500" size={18}/> 语音设置 (iOS优化)</label>
+                                        <div className="bg-purple-50 dark:bg-slate-800 p-4 rounded-xl border border-purple-100 dark:border-slate-700 flex flex-col gap-2">
+                                            <select 
+                                                className="w-full p-2 rounded-lg border border-purple-200 dark:border-slate-600 bg-white dark:bg-slate-600 text-gray-900 dark:text-white"
+                                                value={selectedVoiceURI}
+                                                onChange={(e) => {
+                                                    setSelectedVoiceURI(e.target.value);
+                                                    localStorage.setItem('ww_voice', e.target.value);
+                                                    playText("你好，我是认字小能手", e.target.value);
+                                                }}
+                                            >
+                                                <option value="">自动选择 (推荐)</option>
+                                                {availableVoices.map(v => (
+                                                    <option key={v.voiceURI} value={v.voiceURI}>
+                                                        {v.name} ({v.lang})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 leading-tight">
+                                                💡 提示：如果声音生硬，请在iPad/iPhone的 <b>设置 &gt; 辅助功能 &gt; 朗读内容 &gt; 声音 &gt; 中文</b> 中下载“增强版”语音包（如：Tian-Tian）。
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 font-bold mb-2 text-gray-700 dark:text-gray-200"><Icons.Save className="text-blue-500" size={18}/> 数据管理</label>
+                                        <div className="bg-blue-50 dark:bg-slate-800 p-4 rounded-xl flex gap-4">
+                                            <button onClick={handleExport} className="flex-1 bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-300 py-3 rounded-lg font-bold flex justify-center gap-2 shadow-sm"><Icons.Download size={18}/>备份</button>
+                                            <button onClick={()=>fileInputRef.current.click()} className="flex-1 bg-blue-500 text-white py-3 rounded-lg font-bold flex justify-center gap-2 shadow-md hover:bg-blue-600"><Icons.Upload size={18}/>恢复</button>
                                             <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json"/>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="flex flex-col gap-6">
-                                    <div><label className="flex gap-2 font-bold mb-2 text-gray-700"><Icons.Play size={16}/> 学习素材</label><textarea className="w-full h-32 p-4 bg-indigo-50 border-2 border-indigo-100 rounded-xl" value={inputText} onChange={e=>setInputText(e.target.value)}/></div>
-                                    <div><label className="flex gap-2 font-bold mb-2 text-gray-700"><Icons.GraduationCap size={16}/> 已学会</label><textarea className="w-full h-32 p-4 bg-green-50 border-2 border-green-100 rounded-xl" value={learnedText} onChange={e=>setLearnedText(e.target.value)}/></div>
+                                    <div>
+                                        <label className="flex gap-2 font-bold mb-2 text-gray-700 dark:text-gray-200"><Icons.Play size={16}/> 学习素材</label>
+                                        {/* TEXTAREA COLOR FIX: Added text-slate-900 for Light Mode, and dark:text-white for Dark Mode */}
+                                        <textarea 
+                                            className="w-full h-32 p-4 bg-indigo-50 dark:bg-slate-800 text-slate-900 dark:text-white border-2 border-indigo-100 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-colors" 
+                                            value={inputText} 
+                                            onChange={e=>setInputText(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="flex gap-2 font-bold mb-2 text-gray-700 dark:text-gray-200"><Icons.GraduationCap size={16}/> 已学会</label>
+                                        {/* TEXTAREA COLOR FIX: Added text-slate-900 for Light Mode, and dark:text-white for Dark Mode */}
+                                        <textarea 
+                                            className="w-full h-32 p-4 bg-green-50 dark:bg-slate-800 text-slate-900 dark:text-white border-2 border-green-100 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-colors" 
+                                            value={learnedText} 
+                                            onChange={e=>setLearnedText(e.target.value)}
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <button onClick={async ()=>{ 
-                                await initializeAudio(); 
-                                if(parseInputData(inputText).length<3) { alert("请至少输入3行素材"); return; }
-                                localStorage.setItem('ww_input', inputText);
-                                localStorage.setItem('ww_learned', learnedText);
-                                localStorage.setItem('ww_goal', dailyGoal);
-                                setWordList(parseInputData(inputText));
-                                setGameState('PLAYING');
-                            }} className="w-full bg-indigo-500 text-white font-bold py-4 rounded-xl text-xl shadow-lg flex justify-center gap-2"><Icons.Play size={24}/> 开始学习</button>
+                            <button onClick={()=>{ 
+                                // KEY FIX: Sync unlock
+                                unlockAudio();
+                                
+                                // Then handle the async setup
+                                (async () => {
+                                    await initializeAudio();
+                                    if(parseInputData(inputText).length<3) { alert("请至少输入3行素材"); return; }
+                                    localStorage.setItem('ww_input', inputText);
+                                    localStorage.setItem('ww_learned', learnedText);
+                                    localStorage.setItem('ww_goal', dailyGoal);
+                                    setWordList(parseInputData(inputText));
+                                    setGameState('PLAYING');
+                                })();
+                            }} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-4 rounded-xl text-xl shadow-lg flex justify-center gap-2 transition-colors"><Icons.Play size={24}/> 开始学习</button>
                         </div>
                     );
                 }
 
                 if (wordList.length === 0) {
-                     return <div className="max-w-lg w-full bg-white rounded-3xl p-8 text-center shadow-xl"><Icons.Trophy size={80} className="text-yellow-500 mx-auto mb-6"/><h2 className="text-2xl font-bold mb-4">恭喜你！</h2><p className="mb-8">学会了所有字！</p><button onClick={()=>setGameState('SETUP')} className="bg-indigo-500 text-white font-bold py-3 px-8 rounded-xl">添加素材</button></div>;
+                     return <div className="max-w-lg w-full bg-white dark:bg-slate-750 rounded-3xl p-8 text-center shadow-xl transition-colors"><Icons.Trophy size={80} className="text-yellow-500 mx-auto mb-6"/><h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">恭喜你！</h2><p className="mb-8 text-gray-600 dark:text-gray-300">学会了所有字！</p><button onClick={()=>setGameState('SETUP')} className="bg-indigo-500 text-white font-bold py-3 px-8 rounded-xl hover:bg-indigo-600">添加素材</button></div>;
                 }
 
                 return (
                     <div className="max-w-lg w-full flex flex-col items-center">
                         <div className="w-full flex flex-col gap-4 mb-6 px-4">
                             <div className="flex justify-between items-center">
-                                <button onClick={()=>setGameState('SETUP')} className="p-2 bg-white rounded-full shadow-sm text-gray-400"><Icons.Settings size={20}/></button>
-                                <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${goalMetToday?'bg-orange-50 border-orange-200 text-orange-600':'bg-gray-50 border-gray-100 text-gray-400'}`}><Icons.Flame size={24} fill={goalMetToday?"currentColor":"none"}/><div className="flex flex-col leading-none"><span className="text-lg font-black">{streak}</span><span className="text-[10px]">天连击</span></div></div>
-                                <div className={`flex items-center gap-2 bg-yellow-100 px-4 py-2 rounded-full border-2 border-yellow-200 ${scoreBump?'animate-score-bump':''}`}><Icons.Trophy size={20} className="text-yellow-500" fill="currentColor"/><span className="text-xl font-bold text-yellow-700">{score}</span></div>
+                                <button onClick={()=>setGameState('SETUP')} className="p-2 bg-white dark:bg-slate-750 rounded-full shadow-sm text-gray-400 dark:text-gray-300 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"><Icons.Settings size={20}/></button>
+                                <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${goalMetToday?'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400':'bg-gray-50 dark:bg-slate-800 border-gray-100 dark:border-slate-700 text-gray-400 dark:text-gray-500'}`}><Icons.Flame size={24} fill={goalMetToday?"currentColor":"none"}/><div className="flex flex-col leading-none"><span className="text-lg font-black">{streak}</span><span className="text-[10px]">天连击</span></div></div>
+                                <div className={`flex items-center gap-2 bg-yellow-100 dark:bg-yellow-900/30 px-4 py-2 rounded-full border-2 border-yellow-200 dark:border-yellow-800 ${scoreBump?'animate-score-bump':''}`}><Icons.Trophy size={20} className="text-yellow-500" fill="currentColor"/><span className="text-xl font-bold text-yellow-700 dark:text-yellow-500">{score}</span></div>
                             </div>
-                            <div className="w-full bg-white p-3 rounded-2xl shadow-sm border border-gray-100"><div className="flex justify-between text-xs font-bold mb-1 px-1"><span>今日挑战</span><span>{dailyProgress} / {dailyGoal}</span></div><div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 rounded-full ${goalMetToday?'bg-gradient-to-r from-orange-400 to-red-500':'bg-indigo-400'}`} style={{width:`${Math.min(100,(dailyProgress/dailyGoal)*100)}%`}}></div></div></div>
+                            <div className="w-full bg-white dark:bg-slate-750 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 transition-colors"><div className="flex justify-between text-xs font-bold mb-1 px-1 text-gray-600 dark:text-gray-400"><span>今日挑战</span><span>{dailyProgress} / {dailyGoal}</span></div><div className="w-full h-3 bg-gray-100 dark:bg-slate-600 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 rounded-full ${goalMetToday?'bg-gradient-to-r from-orange-400 to-red-500':'bg-indigo-400 dark:bg-indigo-500'}`} style={{width:`${Math.min(100,(dailyProgress/dailyGoal)*100)}%`}}></div></div></div>
                         </div>
-                        <div className="w-full bg-white rounded-3xl shadow-2xl p-6 mb-8 relative overflow-hidden min-h-[500px] flex flex-col justify-start border-b-8 border-indigo-100">
-                            {masteryNotification && <div className="absolute inset-x-0 top-0 bg-green-100 p-3 text-green-700 text-sm font-bold text-center flex justify-center gap-2 z-20 animate-pop-in"><Icons.CheckCircle size={18}/>{masteryNotification}</div>}
+                        <div className="w-full bg-white dark:bg-slate-750 rounded-3xl shadow-2xl p-6 mb-8 relative overflow-hidden min-h-[500px] flex flex-col justify-start border-b-8 border-indigo-100 dark:border-slate-800 transition-colors">
+                            {masteryNotification && <div className="absolute inset-x-0 top-0 bg-green-100 dark:bg-green-900 p-3 text-green-700 dark:text-green-200 text-sm font-bold text-center flex justify-center gap-2 z-20 animate-pop-in"><Icons.CheckCircle size={18}/>{masteryNotification}</div>}
                             <div className="text-center mb-6 mt-2 shrink-0">
-                                <button onClick={()=>targetWord&&playTargetAudio(targetWord)} disabled={isPlayingAudio} className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto transition-transform active:scale-95 ${isPlayingAudio?'bg-indigo-100 text-indigo-500 ring-4 ring-indigo-200':'bg-indigo-500 text-white shadow-lg'}`}>{isPlayingAudio?<div className="flex gap-1 items-end h-8 pb-2"><span className="w-1.5 h-3 bg-current rounded-full animate-bounce"></span><span className="w-1.5 h-5 bg-current rounded-full animate-bounce"></span><span className="w-1.5 h-3 bg-current rounded-full animate-bounce"></span></div>:<Icons.Volume2 size={36}/>}</button>
+                                <button onClick={()=>targetWord&&playTargetAudio(targetWord)} disabled={isPlayingAudio} className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto transition-transform active:scale-95 ${isPlayingAudio?'bg-indigo-100 dark:bg-slate-600 text-indigo-500 dark:text-indigo-300 ring-4 ring-indigo-200 dark:ring-slate-500':'bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg'}`}>{isPlayingAudio?<div className="flex gap-1 items-end h-8 pb-2"><span className="w-1.5 h-3 bg-current rounded-full animate-bounce"></span><span className="w-1.5 h-5 bg-current rounded-full animate-bounce"></span><span className="w-1.5 h-3 bg-current rounded-full animate-bounce"></span></div>:<Icons.Volume2 size={36}/>}</button>
                             </div>
-                            <div className="h-8 text-center mb-4 shrink-0">{feedback==='correct'&&<span className="text-green-500 font-bold text-2xl animate-bounce block">你真棒！🎉</span>}</div>
+                            <div className="h-8 text-center mb-4 shrink-0">{feedback==='correct'&&<span className="text-green-500 dark:text-green-400 font-bold text-2xl animate-bounce block">你真棒！🎉</span>}</div>
                             <div className="grid grid-cols-3 gap-3 md:gap-4 flex-grow content-center">
                                 {currentOptions.map(opt => {
                                     const isTarget = targetWord?.id===opt.id;
                                     return (
-                                        <button key={opt.id} onClick={()=>handleOptionClick(opt)} disabled={isPlayingAudio||feedback==='correct'} className={`w-full aspect-[4/5] md:aspect-square rounded-2xl text-7xl md:text-8xl font-bold transition-all shadow-md flex items-center justify-center relative ${feedback==='correct'&&isTarget?'bg-green-500 text-white ring-4 ring-green-200 z-10 scale-105':'bg-white hover:bg-indigo-50 border-2 border-gray-100 text-gray-800'}`}>{opt.char}</button>
+                                        <button key={opt.id} onClick={()=>handleOptionClick(opt)} disabled={isPlayingAudio||feedback==='correct'} className={`w-full aspect-[4/5] md:aspect-square rounded-2xl text-7xl md:text-8xl font-bold transition-all shadow-md flex items-center justify-center relative ${feedback==='correct'&&isTarget?'bg-green-500 text-white ring-4 ring-green-200 dark:ring-green-800 z-10 scale-105':'bg-white dark:bg-slate-600 hover:bg-indigo-50 dark:hover:bg-slate-500 border-2 border-gray-100 dark:border-slate-500 text-gray-800 dark:text-white'}`}>{opt.char}</button>
                                     );
                                 })}
                             </div>
@@ -1221,16 +1430,16 @@
             };
 
             return (
-                <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 font-sans relative">
+                <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-850 flex items-center justify-center p-4 font-sans relative transition-colors duration-300">
                     {renderContent()}
                     {showCelebration && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={()=>setShowCelebration(false)}>
-                            <div className="relative w-full max-w-sm mx-4 bg-white rounded-3xl p-8 text-center shadow-2xl animate-pop-in border-4 border-yellow-300" onClick={e=>e.stopPropagation()}>
-                                <button onClick={()=>setShowCelebration(false)} className="absolute top-4 right-4 text-gray-400"><Icons.X/></button>
+                            <div className="relative w-full max-w-sm mx-4 bg-white dark:bg-slate-800 rounded-3xl p-8 text-center shadow-2xl animate-pop-in border-4 border-yellow-300 dark:border-yellow-500" onClick={e=>e.stopPropagation()}>
+                                <button onClick={()=>setShowCelebration(false)} className="absolute top-4 right-4 text-gray-400 dark:text-gray-500"><Icons.X/></button>
                                 <div className="flex justify-center mb-6"><div className="relative"><Icons.Flame size={80} className="text-orange-500 animate-bounce" fill="currentColor"/><Icons.Star size={30} className="text-yellow-400 absolute -top-2 -right-4 animate-spin" fill="currentColor"/></div></div>
-                                <h2 className="text-3xl font-black text-orange-600 mb-2">挑战成功！</h2>
-                                <p className="text-gray-600 text-lg mb-6">今日目标已达成</p>
-                                <button onClick={()=>setShowCelebration(false)} className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold py-3 rounded-xl shadow-lg">继续加油</button>
+                                <h2 className="text-3xl font-black text-orange-600 dark:text-orange-400 mb-2">挑战成功！</h2>
+                                <p className="text-gray-600 dark:text-gray-300 text-lg mb-6">今日目标已达成</p>
+                                <button onClick={()=>setShowCelebration(false)} className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold py-3 rounded-xl shadow-lg hover:from-orange-600 hover:to-red-600">继续加油</button>
                             </div>
                         </div>
                     )}
